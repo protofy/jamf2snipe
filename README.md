@@ -10,9 +10,12 @@ options:
   --auto_incrementing   You can use this if you have auto-incrementing 
                         enabled in your snipe instance to utilize that 
                         instead of adding the Jamf ID for the asset tag.
-  --dryrun              This checks your config and tries to contact both 
+  --connection_test     This checks your config and tries to contact both 
                         the JAMFPro and Snipe-it instances, but exits before 
                         updating or syncing any assets.
+  --dryrun              Will connect to both JAMF and Snipe, but will not 
+                        update any assets. This is useful for testing your 
+                        settings.conf file, or developing new features. 
   -d, --debug           Sets logging to include additional DEBUG messages.
   --do_not_update_jamf  Does not update Jamf with the asset tags stored in 
                         Snipe.
@@ -125,6 +128,12 @@ Some example API mappings can be found below:
 - Extension Attribute:    `_snipe_it_<your_custom_field_id> = extension_attributes <attribute id from jamf>`
 
 More information can be found in the ./jamf2snipe file about associations and [valid subsets](https://github.com/ParadoxGuitarist/jamf2snipe/blob/master/jamf2snipe#L33).
+
+### Conversion functions
+
+You can convert the values for your custom fields using the conversion area.
+Available conversions are from Mhz upward, and from MB upward. Conversions will run, until the next division is > 1, and will output a numeric value with the appropriate suffix.
+Please see the config for a simple example.
 
 ## Testing
 

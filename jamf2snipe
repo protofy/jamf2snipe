@@ -364,6 +364,16 @@ def get_jamf_mobiles_by_group(jamf_id):
         logging.debug("Returning a null value for the function.")
         return None
 
+# Helper function to convert the jamf storage array into a more usable dictionary that can be accessed by disk name.
+def cleanup_storage(jamf_object):
+    storage_entries = {}
+    for entry in jamf_object['hardware']['storage']:
+        storage_entries[entry['disk']] = entry
+        storage_entries[entry['disk']].pop('disk')
+    jamf_object['hardware']['storage'] = storage_entries
+    return jamf_object
+
+
 # Function to lookup a JAMF asset by id.
 def search_jamf_asset(jamf_id):
     api_url = "{}/JSSResource/computers/id/{}".format(jamfpro_base, jamf_id)
@@ -372,6 +382,7 @@ def search_jamf_asset(jamf_id):
         logging.debug("Got back a valid 200 response code.")
         jsonresponse = response.json()
         logging.debug("Returning: {}".format(jsonresponse['computer']))
+        jsonresponse['computer'] = cleanup_storage(jsonresponse['computer'])
         return jsonresponse['computer']
     elif b'policies.ratelimit.QuotaViolation' in response.content:
         logging.info('JAMFPro responded with error code: {} - Policy Ratelimit Quota Violation - when we tried to look up id: {} Waiting a bit to retry the lookup.'.format(response, jamf_id))
@@ -587,6 +598,32 @@ def create_snipe_asset(payload):
         logging.error('Asset creation failed for asset {} with error {}'.format(payload['name'],response.text))
         return 'ERROR', response
 
+
+# Function to generate the payload for an asset
+def generate_payload(jamf, jamf_type, config):
+    payload = {}
+    for snipekey in config['{}-api-mapping'.format(jamf_type)]:
+        jamfsplit = config['{}-api-mapping'.format(jamf_type)][snipekey].split()
+        try:
+            for i, item in enumerate(jamfsplit):
+                try:
+                    item = int(item)
+                except ValueError:
+                    logging.debug('{} is not an integer'.format(item))
+                if i == 0:
+                    jamf_value = jamf[item]
+                else:
+                    if jamfsplit[0] == 'extension_attributes':
+                        for attribute in jamf_value:
+                            if attribute['id'] == item:
+                                jamf_value = attribute['value']
+                    else:
+                        jamf_value = jamf_value[item]
+            payload[snipekey] = jamf_value
+        except KeyError:
+            continue
+    return payload
+
 # Function that updates a snipe asset with a JSON payload
 def update_snipe_asset(snipe_id, payload):
     if user_args.dryrun:
@@ -766,6 +803,24 @@ if user_args.connection_test:
 logging.info('Starting to Update Inventory')
 CurrentNumber = 0
 
+
+def convert_values(conversion, value):
+    if conversion == 'fromMB':
+        units = ['MB', 'GB', 'TB']
+        counter = 0
+        while value / 1024 > 1:
+            value = value / 1024
+            counter += 1
+        return f"{round(value)} {units[counter]}"
+    elif conversion == 'fromMHz':
+        units = ['MHz', 'GHz', 'THz']
+        counter = 0
+        while value / 1000 > 1:
+            value = value / 1024
+            counter += 1
+        return f"{value:.2f} {units[counter]}"
+
+
 for jamf_type in jamf_types:
     if user_args.computers:
         if jamf_type != 'computers':
@@ -852,26 +907,8 @@ for jamf_type in jamf_types:
                 logging.debug("Payload is being made for a computer")
                 newasset = {'asset_tag': jamf_asset_tag,'model_id': modelnumbers['{}'.format(jamf['hardware']['model_identifier'])], 'name': jamf['general']['name'], 'status_id': defaultStatus,'serial': jamf['general']['serial_number']}
             else:
-                for snipekey in config['{}-api-mapping'.format(jamf_type)]:
-                    jamfsplit = config['{}-api-mapping'.format(jamf_type)][snipekey].split()
-                    try:
-                        for i, item in enumerate(jamfsplit):
-                            try:
-                                item = int(item)
-                            except ValueError:
-                                logging.debug('{} is not an integer'.format(item))
-                            if i == 0:
-                                jamf_value = jamf[item]
-                            else:
-                                if jamfsplit[0] == 'extension_attributes':
-                                    for attribute in jamf_value:
-                                        if attribute['id'] == item:
-                                            jamf_value = attribute['value']
-                                else:
-                                    jamf_value = jamf_value[item]
-                        newasset[snipekey] = jamf_value
-                    except KeyError:
-                        continue
+                payload = generate_payload(jamf, jamf_type, config)
+                newasset = {newasset, payload}
             # Reset the payload without the asset_tag if auto_incrementing flag is set.
             if user_args.auto_incrementing:
                 newasset.pop('asset_tag', None)
@@ -906,33 +943,13 @@ for jamf_type in jamf_types:
                     logging.debug("Forced the Update regardless of the timestamps below.")
                 logging.debug("Updating the Snipe asset because JAMF has a more recent timestamp: {} > {} or the Snipe Record is new".format(jamf_time, snipe_time))
                 updates = {}
-                for snipekey in config['{}-api-mapping'.format(jamf_type)]:
-                    try:
-                        jamfsplit = config['{}-api-mapping'.format(jamf_type)][snipekey].split()
-                        for i, item in enumerate(jamfsplit):
-                            try:
-                                item = int(item)
-                            except ValueError:
-                                logging.debug('{} is not an integer'.format(item))
-                            if i == 0:
-                                jamf_value = jamf[item]
-                            else:
-                                if jamfsplit[0] == 'extension_attributes':
-                                    for attribute in jamf_value:
-                                        if attribute['id'] == item:
-                                            jamf_value = attribute['value']
-                                else:
-                                    jamf_value = jamf_value[item]
-                        payload = {snipekey: jamf_value}
-                        latestvalue = jamf_value
-                    except (KeyError, TypeError):
-                        logging.debug("Skipping the payload, because the JAMF key we're mapping to doesn't exist")
-                        continue
 
-                    # Need to check that we're not needlessly updating the asset.
-                    # If it's a custom value it'll fail the first section and send it to except section that will parse custom sections.
+                payload = generate_payload(jamf, jamf_type, config)
+                # Need to check that we're not needlessly updating the asset.
+                # If it's a custom value it'll fail the first section and send it to except section that will parse custom sections.
+                for snipekey in payload:
                     try:
-                        if snipe['rows'][0][snipekey] != latestvalue:
+                        if snipe['rows'][0][snipekey] != payload[snipekey]:
                             updates.update(payload)
                         else:
                             logging.debug("Skipping the payload, because it already exits.")
@@ -941,8 +958,8 @@ for jamf_type in jamf_types:
                         needsupdate = False
                         for CustomField in snipe['rows'][0]['custom_fields']:
                             if snipe['rows'][0]['custom_fields'][CustomField]['field'] == snipekey :
-                                if snipe['rows'][0]['custom_fields'][CustomField]['value'] != str(latestvalue):
-                                    logging.debug("Found the field, and the value needs to be updated from {} to {}".format(snipe['rows'][0]['custom_fields'][CustomField]['value'], latestvalue))
+                                if snipe['rows'][0]['custom_fields'][CustomField]['value'] != payload[snipekey]:
+                                    logging.debug("Found the field, and the value needs to be updated from {} to {}".format(snipe['rows'][0]['custom_fields'][CustomField]['value'], payload[snipekey]))
                                     needsupdate = True
                         if needsupdate == True:
                             updates.update(payload)
@@ -950,6 +967,9 @@ for jamf_type in jamf_types:
                             logging.debug("Skipping the payload, because it already exists, or the Snipe key we're mapping to doesn't.")
 
                 if updates:
+                    for snipekey in updates:
+                        if snipekey in config['conversions']:
+                            updates[snipekey] = convert_values(config['conversions'][snipekey], updates[snipekey])
                     update_snipe_asset(snipe_id, updates)
 
                 if ((user_args.users or user_args.users_inverse) and (snipe['rows'][0]['assigned_to'] == None) == user_args.users) or user_args.users_force:

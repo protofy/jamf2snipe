@@ -31,3 +31,6 @@ name = general name
 
 [user-mapping] # The field from jamf that you want to search Snipe with
 jamf_api_field = location username
+
+[conversions] # The conversion you want to run on the custom field
+_snipeit_ram_2 = fromMB
