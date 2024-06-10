@@ -1,0 +1,48 @@
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: {{.Chart.Name}}
+spec:
+  schedule: "{{.Values.cronSchedule}}"
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          containers:
+          - name: {{.Chart.Name}}
+            image: {{.Values.image.repository}}:{{.Values.image.tag}}
+            imagePullPolicy: {{.Values.image.pullPolicy}}
+            {{- if .Values.secretCredentials.enabled }}
+            env:
+              - name: SNIPE_IT_APIKEY
+                valueFrom:
+                  secretKeyRef:
+                    name: {{ .Values.secretCredentials.secretName }}
+                    key: {{ .Values.secretCredentials.snipeItApiKey }}
+              - name: JAMF_PASSWORD
+                valueFrom:
+                  secretKeyRef:
+                    name: {{ .Values.secretCredentials.secretName }}
+                    key: {{ .Values.secretCredentials.jamfPassword }}
+            {{- end }}
+            command:
+              ["/app/init.sh"]
+              {{ if .Values.jamf2snipe.args }}
+            args: {{ .Values.jamf2snipe.args}}
+            {{ end }}
+            {{ if .Values.configMap.enabled }}
+            volumeMounts:
+            - name: config
+              mountPath: {{ .Values.configMap.mountPath }}
+            {{ end }}
+          volumes:
+          {{ if .Values.configMap.enabled }}
+          - name: config
+            configMap:
+                name: {{ .Values.configMap.configName }}
+          {{ end }}
+          {{- if .Values.imagePullSecrets }}
+          imagePullSecrets:
+            {{- toYaml .Values.imagePullSecrets | nindent 12 }}
+          {{- end }}
+          restartPolicy: Never

@@ -1,0 +1,35 @@
+# Default values for jamf2snipe.
+# This is a YAML-formatted file.
+# Declare variables to be passed into your templates.
+
+replicaCount: 1
+
+cronSchedule: "0 23 * * *"
+
+jamf2snipe:
+  args:
+    - "-u"
+    - "-v"
+
+secretCredentials:
+  enabled: false
+  secretName: jamf2snipe-credentials
+  snipeItApiKey: snipeit-api-key
+  jamfPassword: jamf-password
+
+configMap:
+  enabled: true
+  configName: jamf2snipe-config
+  mountPath: /var/config
+
+image:
+  repository: yourregistry.com/jamf2snipe
+  pullPolicy: IfNotPresent
+  # Overrides the image tag whose default is the chart appVersion.
+  tag: latest
+
+imagePullSecrets: []
+nameOverride: ""
+fullnameOverride: ""
+
+podAnnotations: {}

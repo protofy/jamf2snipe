@@ -30,6 +30,8 @@
 #       _snipeit_custom_name_1234567890 = subset jamf_key
 #
 #   A list of valid subsets are:
+import os
+
 version = "1.0.5"
 
 validsubset = [
@@ -124,7 +126,19 @@ if 'snipe-it' not in set(config):
 
 logging.info("Great, we found a settings file. Let's get started by parsing all of the settings.")
 
-# While setting the variables, use a try loop so we can raise a error if something goes wrong. 
+# While setting the variables, use a try loop so we can raise a error if something goes wrong.
+logging.info("Checking for Settings in Environment Variables.")
+if 'JAMF_PASSWORD' in os.environ:
+    jamf_password = os.environ['JAMF_PASSWORD']
+    logging.debug("Found JAMF_PASSWORD in the environment variables.")
+else:
+    jamf_password = None
+if 'SNIPE_IT_APIKEY' in os.environ:
+    snipe_apiKey = os.environ['SNIPE_IT_APIKEY']
+    logging.debug("Found SNIPE_APIKEY in the environment variables.")
+else:
+    snipe_apiKey = None
+
 try:
     # Set some Variables from the settings.conf:
     # This is the address, cname, or FQDN for your JamfPro instance.
@@ -136,19 +150,24 @@ try:
     jamf_user = config['jamf']['username']
     logging.debug("The user you provided for Jamf is: {}".format(jamf_user))
 
-    logging.info("Setting the password to request an api key.")
-    jamf_password = config['jamf']['password']
-    logging.debug("The password you provided for Jamf is: {}".format(jamf_user))    
-    
+    if not jamf_password:
+        logging.info("Setting the password to request an api key.")
+        jamf_password = config['jamf']['password']
+        logging.debug("The password you provided for Jamf is: {}".format(jamf_user))
+    else:
+        logging.info("Using the password from the environment variables.")
+        logging.debug("The password you provided for Jamf is: {}".format(jamf_user))
     # This is the address, cname, or FQDN for your snipe-it instance.
     logging.info("Setting the base URL for SnipeIT.")
     snipe_base = config['snipe-it']['url']
     logging.debug("The configured Snipe-IT base url is: {}".format(snipe_base))
-    
-    logging.info("Setting the API key for SnipeIT.") 
-    snipe_apiKey = config['snipe-it']['apikey']
-    logging.debug("The API key you provided for Snipe is: {}".format(snipe_apiKey))
-    
+    if not snipe_apiKey:
+        logging.info("Setting the API key for SnipeIT.")
+        snipe_apiKey = config['snipe-it']['apikey']
+        logging.debug("The API key you provided for Snipe is: {}".format(snipe_apiKey))
+    else:
+        logging.info("Using the API key from the environment variables.")
+        logging.debug("The API key you provided for Snipe is: {}".format(snipe_apiKey))
     logging.info("Setting the default status for SnipeIT assets.")
     defaultStatus = config['snipe-it']['defaultStatus']
     logging.debug("The default status we'll be setting updated assets to is: {} (I sure hope this is a number or something is probably wrong)".format(defaultStatus))
